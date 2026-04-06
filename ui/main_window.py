@@ -502,6 +502,16 @@ class MainWindow(QMainWindow):
         self.btn_reset.clicked.connect(self.reset_app)
         hl.addWidget(self.btn_reset)
 
+        # Nút Mở Thư mục Kết quả (Ẩn đi cho đến khi xong)
+        hl.addSpacing(10)
+        self.btn_open_out = QPushButton("📁")
+        self.btn_open_out.setToolTip("Mở thư mục ảnh kết quả ([AI_SELECTED])")
+        self.btn_open_out.setFixedSize(42, 42)
+        self.btn_open_out.setStyleSheet(reset_style)
+        self.btn_open_out.clicked.connect(self.open_output_folder)
+        self.btn_open_out.hide()
+        hl.addWidget(self.btn_open_out)
+
         return card
 
     def _slider_group(self, label, init_val, s_min, s_max, s_val,
@@ -715,6 +725,9 @@ class MainWindow(QMainWindow):
         if not folder:
             self.toast.show_message("Chưa chọn thư mục ảnh!", "warning")
             return
+            
+        if hasattr(self, 'btn_open_out'):
+            self.btn_open_out.hide()
 
         threshold     = self.time_slider.value() / 10.0
         ear           = self.ear_slider.value() / 100.0
@@ -751,6 +764,8 @@ class MainWindow(QMainWindow):
         # 1. Reset logic/folder
         self.drop_zone.reset_state()
         self.folder_path = None
+        if hasattr(self, 'btn_open_out'):
+            self.btn_open_out.hide()
         
         # 2. Reset Stats
         for card in (self.stat_total, self.stat_groups, self.stat_selected, self.stat_success):
@@ -847,6 +862,9 @@ class MainWindow(QMainWindow):
             self.log_panel.add_log(f"✓ Hoàn thành: {success} RAW files", "info")
             self.toast.show_message(msg, "success", 6000)
 
+        if success > 0 and hasattr(self, 'btn_open_out'):
+            self.btn_open_out.show()
+
     def on_error(self, err: str):
         self.progress_bar.setMaximum(100)
         self.progress_bar.setValue(0)
@@ -855,6 +873,27 @@ class MainWindow(QMainWindow):
         self.status_lbl.setText("Lỗi — xem nhật ký bên dưới")
         self.log_panel.add_log(f"LỖI: {friendly}", "error")
         self.toast.show_message(friendly, "error", 8000)
+
+    def open_output_folder(self):
+        """Mở thư mục [AI_SELECTED] bằng trình quản lý tệp tin của OS."""
+        import os, subprocess, platform
+        if not hasattr(self.drop_zone, 'folder_path') or not self.drop_zone.folder_path:
+            return
+        out_dir = os.path.join(self.drop_zone.folder_path, "[AI_SELECTED]")
+        if not os.path.exists(out_dir):
+            self.toast.show_message(f"Không tìm thấy thư mục: {out_dir}", "error")
+            return
+            
+        system = platform.system()
+        try:
+            if system == "Darwin":
+                subprocess.call(["open", out_dir])
+            elif system == "Windows":
+                os.startfile(out_dir)
+            else:
+                subprocess.call(["xdg-open", out_dir])
+        except Exception as e:
+            self.log_panel.add_log(f"Lỗi mở thư mục: {e}", "error")
 
     @staticmethod
     def _friendly(raw: str) -> str:

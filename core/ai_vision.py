@@ -188,9 +188,17 @@ class AIVisionPipeline:
             logger.error(f"Lỗi MediaPipe: {e}")
 
         # Init YOLO
+        import os
         try:
-            self.model_yolo = YOLO(yolo_model_path)
-            logger.info(f"YOLO '{yolo_model_path}' OK.")
+            mlpackage_path = yolo_model_path.replace('.pt', '.mlpackage')
+            if os.path.exists(mlpackage_path):
+                self.model_yolo = YOLO(mlpackage_path, task='detect')
+                self._yolo_device = 'cpu'  # Core ML triggers ANE when device='cpu' is specified
+                logger.info(f"YOLO Core ML '{mlpackage_path}' OK.")
+            else:
+                self.model_yolo = YOLO(yolo_model_path)
+                self._yolo_device = 'mps'
+                logger.info(f"YOLO PyTorch '{yolo_model_path}' OK.")
         except Exception as e:
             logger.error(f"Không nạp được YOLO: {e}")
 
@@ -282,7 +290,8 @@ class AIVisionPipeline:
             if self.model_yolo is not None:
                 try:
                     # Chạy trên ảnh scale nhỏ hơn để nhanh hơn nếu cần, nhưng YOLO thường tự làm
-                    yl = self.model_yolo.predict(source=rgb, device='mps', verbose=False)
+                    device_to_use = getattr(self, '_yolo_device', 'mps')
+                    yl = self.model_yolo.predict(source=rgb, device=device_to_use, verbose=False)
                     for r in yl:
                         for box in r.boxes:
                             yolo_bboxes.append(tuple(map(int, box.xyxy[0])))

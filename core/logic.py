@@ -25,7 +25,7 @@ from core.analyzer import (
     detect_motion_blur_fft,
     calculate_exposure_score,
 )
-from core.dedup import deduplicate_within_group, hamming_distance
+from core.dedup import deduplicate_within_group, hamming_distance, compute_phash
 
 logger = logging.getLogger(__name__)
 
@@ -383,8 +383,9 @@ def select_best_images(groups: List[List[Dict[str, Any]]],
     for group in groups:
         if not group: continue
         
-        # Thống kê nhóm
+        # Thống kê nhóm: Scale tương đối để tấm nét nhất trong nhóm là 1.0 (nhưng tránh chia cho số quá khắt khe)
         max_sharp = max((i.get('sharpness', 0) for i in group), default=1.0)
+        if max_sharp < 1.0: max_sharp = 1.0
         
         # Lấy area ảnh một lần
         img_area = 1_000_000
@@ -413,20 +414,20 @@ def select_best_images(groups: List[List[Dict[str, Any]]],
             
             if perfect:
                 winner = max(perfect, key=lambda x: x['composite_score'])
+                selected_paths.append(winner['path'])
             else:
                 # TIER 2: Mắt mở (chấp nhận liếc nhẹ)
                 eyes_open = [i for i in group if i.get('all_eyes_open')]
                 if eyes_open:
                     winner = max(eyes_open, key=lambda x: x['composite_score'])
+                    selected_paths.append(winner['path'])
                 else:
-                    # TIER 3: Có mặt
-                    has_face = [i for i in group if i.get('has_face')]
-                    if has_face:
-                        winner = max(has_face, key=lambda x: x['composite_score'])
-                    else:
-                        winner = max(group, key=lambda x: x['composite_score'])
-            
-            selected_paths.append(winner['path'])
+                    # TIER 3: BẢO HIỂM (INSURANCE LOGIC)
+                    # Không có tấm nào tất cả mọi người đều mở mắt -> Lỗi nhắm mắt cả nhóm.
+                    # Quyết định: Phải chọn HẾT cả nhóm (extend group) để user tự đánh giá.
+                    for i_in_group in group:
+                        i_in_group['is_insurance'] = True
+                        selected_paths.append(i_in_group['path'])
 
     # BƯỚC C: GLOBAL DEDUPLICATION (CẢI TIẾN 3.0)
     # So sánh các tấm winner giữa các nhóm gần nhau (trong vòng 10s)
@@ -451,14 +452,30 @@ def select_best_images(groups: List[List[Dict[str, Any]]],
     for i in range(1, len(selected_items)):
         curr = selected_items[i]
         
-        # 1. Kiểm tra khoảng cách thời gian (chỉ lọc trùng nếu < 10s)
+        # 1. BẢO HIỂM: Nếu thuộc nhóm lỗi (nhắm mắt), luôn giữ lại, không dedup để tránh lọt tấm
+        if curr.get('is_insurance') or last_kept.get('is_insurance'):
+            final_unique_paths.append(curr['path'])
+            last_kept = curr
+            continue
+
+        # 2. Kiểm tra khoảng cách thời gian (chỉ lọc trùng nếu < 10s)
         time_gap = curr['time'] - last_kept['time']
         if time_gap > 10.0:
             final_unique_paths.append(curr['path'])
             last_kept = curr
             continue
 
-        # 2. Kiểm tra thay đổi cỡ cảnh (Toàn -> Bán thân)
+        # 3. PASS 3: GLOBAL DEDUPLICATION VỚI PHASH
+        h1 = compute_phash(last_kept['path'])
+        h2 = compute_phash(curr['path'])
+        dist = hamming_distance(h1, h2)
+        if dist <= 12:  # Trùng nội dung > 90% (Deduplicate)
+            if curr.get('composite_score', 0) > last_kept.get('composite_score', 0):
+                final_unique_paths[-1] = curr['path']
+                last_kept = curr
+            continue
+
+        # 4. Kiểm tra thay đổi cỡ cảnh (Toàn -> Bán thân)
         r1 = calculate_face_ratio(last_kept)
         r2 = calculate_face_ratio(curr)
         # Nếu cỡ cảnh thay đổi > 30% thì giữ lại cả hai góc máy
@@ -469,7 +486,7 @@ def select_best_images(groups: List[List[Dict[str, Any]]],
                 last_kept = curr
                 continue
 
-        # 3. Đếm số người đổi dáng
+        # 5. Đếm số người đổi dáng
         total_people = curr.get('faces_count', 1)
         
         # Thả lỏng theo số người (CẢI TIẾN 3.2)
@@ -487,8 +504,10 @@ def select_best_images(groups: List[List[Dict[str, Any]]],
             final_unique_paths.append(curr['path'])
             last_kept = curr
         else:
-            # TRÙNG NHAU: Ưu tiên lấy tấm chụp trước (last_kept)
-            pass
+            # TRÙNG NHAU: Lấy tấm điểm cao hơn
+            if curr.get('composite_score', 0) > last_kept.get('composite_score', 0):
+                final_unique_paths[-1] = curr['path']
+                last_kept = curr
 
     logger.info(f"Global Deduplication: {len(selected_paths)} → {len(final_unique_paths)} ảnh cuối.")
     return final_unique_paths
