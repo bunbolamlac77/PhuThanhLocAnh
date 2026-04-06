@@ -57,6 +57,9 @@ class CullingWorker(QThread):
         self.gaze_pitch        = gaze_pitch
         self.gaze_priority     = gaze_priority
 
+        self._is_paused        = False
+        self._is_cancelled     = False
+
         # Thống kê tích lũy
         self._total_faces     = 0
         self._total_looking   = 0
@@ -98,6 +101,13 @@ class CullingWorker(QThread):
             groups = group_images(images, time_threshold=self.threshold)
             self.log_message.emit(f"Phân nhóm: {total} ảnh → {len(groups)} nhóm.", "info")
             self.ai_stat.emit({'total': total, 'groups': len(groups), 'selected': 0, 'success': 0})
+
+            def check_status():
+                if self._is_cancelled:
+                    raise Exception("CANCELLED")
+                while self._is_paused and not self._is_cancelled:
+                    import time
+                    time.sleep(0.1)
 
             # Custom callback đề cập nhật UI real-time từ đa luồng
             def wrapped_callback(current, total_items, filepath, frame, res):
@@ -142,6 +152,7 @@ class CullingWorker(QThread):
 
             self.progress.emit(0, len(selected), "Copy RAW files...")
             for idx, proxy in enumerate(selected):
+                check_status()
                 base = os.path.splitext(os.path.basename(proxy))[0]
                 self.progress.emit(idx + 1, len(selected), f"Copy: {base}")
                 raw = find_raw_file(self.folder_path, base)
@@ -176,6 +187,9 @@ class CullingWorker(QThread):
             self.finished.emit(success_c, fail_c, no_space_c)
 
         except Exception as e:
+            if str(e) == "CANCELLED":
+                self.log_message.emit("⏹ Tiến trình đã bị người dùng hủy.", "warn")
+                return
             logger.error(traceback.format_exc())
             self.error.emit(str(e))
 
@@ -485,6 +499,21 @@ class MainWindow(QMainWindow):
         _shadow(self.btn_start, radius=12, color="#2C3E8C35", offset=(0, 4))
         hl.addWidget(self.btn_start)
 
+        # Nút Tạm Dừng & Hủy (Ẩn lúc đầu)
+        self.btn_pause = QPushButton("⏸ Tạm Dừng")
+        self.btn_pause.setMinimumHeight(42)
+        self.btn_pause.setStyleSheet(BTN_PRIMARY.replace("#4F46E5", "#F59E0B").replace("#2C3E8C", "#D97706"))
+        self.btn_pause.clicked.connect(self.toggle_pause)
+        self.btn_pause.hide()
+        hl.addWidget(self.btn_pause)
+
+        self.btn_cancel = QPushButton("⏹ Hủy")
+        self.btn_cancel.setMinimumHeight(42)
+        self.btn_cancel.setStyleSheet(BTN_PRIMARY.replace("#4F46E5", "#EF4444").replace("#2C3E8C", "#B91C1C"))
+        self.btn_cancel.clicked.connect(self.cancel_culling)
+        self.btn_cancel.hide()
+        hl.addWidget(self.btn_cancel)
+
         # Nút Reset (Nhỏ gọn kế bên)
         hl.addSpacing(10)
         self.btn_reset = QPushButton("↺")
@@ -786,12 +815,50 @@ class MainWindow(QMainWindow):
         self.toast.show_message("Đã làm mới ứng dụng!", "info")
 
     def _set_running(self, r: bool):
-        self.btn_start.setEnabled(not r)
+        self.btn_start.setVisible(not r)
+        if r:
+            self.btn_pause.setText("⏸ Tạm Dừng")
+            self.btn_pause.setEnabled(True)
+            self.btn_cancel.setEnabled(True)
+            self.btn_pause.show()
+            self.btn_cancel.show()
+        else:
+            self.btn_pause.hide()
+            self.btn_cancel.hide()
+            self.btn_start.setEnabled(False)
+
         self.drop_zone.setEnabled(not r)
         self.time_slider.setEnabled(not r)
         self.ear_slider.setEnabled(not r)
         self.gaze_setting.yaw_slider.setEnabled(not r)
         self.gaze_setting.pitch_slider.setEnabled(not r)
+
+    def toggle_pause(self):
+        if not self.worker: return
+        self.worker._is_paused = not self.worker._is_paused
+        
+        if self.worker._is_paused:
+            self.btn_pause.setText("▶ Tiếp tục")
+            self.status_lbl.setText("Đang tạm dừng...")
+            self.log_panel.add_log("⏸ Đã tạm dừng tiến trình.", "warn")
+        else:
+            self.btn_pause.setText("⏸ Tạm Dừng")
+            self.status_lbl.setText("Đang tiếp tục phân tích...")
+            self.log_panel.add_log("▶ Tiếp tục tiến trình.", "info")
+
+    def cancel_culling(self):
+        if not self.worker: return
+        self.worker._is_cancelled = True
+        self.btn_pause.setEnabled(False)
+        self.btn_cancel.setEnabled(False)
+        self.status_lbl.setText("Đang hủy tiến trình, vui lòng chờ...")
+        self.log_panel.add_log("Vui lòng chờ, hệ thống đang dừng an toàn...", "warn")
+
+    def closeEvent(self, event):
+        if hasattr(self, 'worker') and self.worker and self.worker.isRunning():
+            self.worker._is_cancelled = True
+            self.worker.wait(2000)
+        event.accept()
 
     def on_progress(self, current: int, total: int, text: str):
         if total > 0:

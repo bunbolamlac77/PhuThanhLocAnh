@@ -41,8 +41,8 @@ W_GAZE       = 0.20   # Hướng nhìn vào camera (MỚI — #10)
 W_EXPOSURE   = 0.10   # Phơi sáng hợp lý
 W_FACE_SIZE  = 0.10   # Kích thước mặt (nhưu tiên close-up)
 
-MOTION_BLUR_PENALTY = 0.40   # Trừ điểm nặng nếu phát hiện motion blur (FFT)
-GAZE_PENALTY        = 0.35   # Trừ điểm khi người liếc đi nơi khác (tăng từ 0.20)
+MOTION_BLUR_PENALTY = 0.60   # Trừ điểm nặng nếu phát hiện motion blur (FFT)
+GAZE_PENALTY        = 0.50   # Trừ điểm khi người liếc đi nơi khác (tăng từ 0.20)
 # CẢI TIẾN 3.1: Hạ từ 15.0 xuống 12.0 để giữ lại các ảnh nghệ thuật hơi "soft".
 MIN_SHARPNESS_SINGLE = 12.0
 FFT_BLUR_THRESHOLD   = 10.0
@@ -342,7 +342,8 @@ def calculate_pose_diff(item1: Dict[str, Any], item2: Dict[str, Any]) -> int:
 def select_best_images(groups: List[List[Dict[str, Any]]],
                        ai_pipeline=None,
                        progress_callback=None,
-                       gaze_priority: float = 0.5) -> List[str]:
+                       gaze_priority: float = 0.5,
+                       check_status_callback=None) -> List[str]:
     """
     Kế hoạch chọn ảnh:
     1. Phân tích đa luồng để tối ưu tốc độ.
@@ -364,6 +365,8 @@ def select_best_images(groups: List[List[Dict[str, Any]]],
     processed_count = 0
 
     def analyze_task(item):
+        if check_status_callback:
+            check_status_callback()
         nonlocal processed_count
         res = {}
         if ai_pipeline:
@@ -423,11 +426,10 @@ def select_best_images(groups: List[List[Dict[str, Any]]],
                     selected_paths.append(winner['path'])
                 else:
                     # TIER 3: BẢO HIỂM (INSURANCE LOGIC)
-                    # Không có tấm nào tất cả mọi người đều mở mắt -> Lỗi nhắm mắt cả nhóm.
-                    # Quyết định: Phải chọn HẾT cả nhóm (extend group) để user tự đánh giá.
-                    for i_in_group in group:
-                        i_in_group['is_insurance'] = True
-                        selected_paths.append(i_in_group['path'])
+                    # Sửa đổi: Mặc dù cả nhóm báo lỗi mắt nhắm, chỉ chọn đúng 1 tấm đỉnh cao nhất 
+                    # để giảm tối đa số lượng ảnh cull ra.
+                    winner = max(group, key=lambda x: x['composite_score'])
+                    selected_paths.append(winner['path'])
 
     # BƯỚC C: GLOBAL DEDUPLICATION (CẢI TIẾN 3.0)
     # So sánh các tấm winner giữa các nhóm gần nhau (trong vòng 10s)
@@ -452,15 +454,9 @@ def select_best_images(groups: List[List[Dict[str, Any]]],
     for i in range(1, len(selected_items)):
         curr = selected_items[i]
         
-        # 1. BẢO HIỂM: Nếu thuộc nhóm lỗi (nhắm mắt), luôn giữ lại, không dedup để tránh lọt tấm
-        if curr.get('is_insurance') or last_kept.get('is_insurance'):
-            final_unique_paths.append(curr['path'])
-            last_kept = curr
-            continue
-
-        # 2. Kiểm tra khoảng cách thời gian (chỉ lọc trùng nếu < 10s)
+        # 2. Kiểm tra khoảng cách thời gian (chỉ lọc trùng nếu < 5s để gom gắt hơn)
         time_gap = curr['time'] - last_kept['time']
-        if time_gap > 10.0:
+        if time_gap > 5.0:
             final_unique_paths.append(curr['path'])
             last_kept = curr
             continue
@@ -469,7 +465,7 @@ def select_best_images(groups: List[List[Dict[str, Any]]],
         h1 = compute_phash(last_kept['path'])
         h2 = compute_phash(curr['path'])
         dist = hamming_distance(h1, h2)
-        if dist <= 12:  # Trùng nội dung > 90% (Deduplicate)
+        if dist <= 20:  # Trùng nội dung > 90% (Ngưỡng 20, khắt khe hơn)
             if curr.get('composite_score', 0) > last_kept.get('composite_score', 0):
                 final_unique_paths[-1] = curr['path']
                 last_kept = curr
@@ -489,13 +485,13 @@ def select_best_images(groups: List[List[Dict[str, Any]]],
         # 5. Đếm số người đổi dáng
         total_people = curr.get('faces_count', 1)
         
-        # Thả lỏng theo số người (CẢI TIẾN 3.2)
+        # Thả lỏng theo số người (CẢI TIẾN 3.3 - Đòi hỏi nhiều thay đổi hơn)
         if total_people > 5:
-            # Ảnh đông người: Chỉ cần 10% người đổi dáng là đủ (ít nhất 1 người)
-            required_changes = max(1, math.ceil(total_people * 0.10))
-        else:
-            # Ảnh ít người (Dâu rể): Cần 20% người đổi dáng
+            # Ảnh đông người: Cần 20% người đổi dáng
             required_changes = max(1, math.ceil(total_people * 0.20))
+        else:
+            # Ảnh ít người (Dâu rể): Cần 30% người đổi dáng
+            required_changes = max(1, math.ceil(total_people * 0.30))
         
         actual_changes = calculate_pose_diff(last_kept, curr)
         

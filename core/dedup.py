@@ -25,7 +25,7 @@ logger = logging.getLogger(__name__)
 
 # Ngưỡng Hamming distance để coi 2 ảnh là "trùng nhau"
 # CẢI TIẾN 3.1: Giảm xuống 12 để thả lỏng việc gom nhóm, tránh mất ảnh.
-PHASH_THRESHOLD = 12
+PHASH_THRESHOLD = 20
 
 
 def compute_phash(filepath: str, hash_size: int = 8, highfreq_factor: int = 4) -> Optional[np.ndarray]:
