@@ -94,9 +94,9 @@ def detect_adaptive_threshold(timestamps: List[float],
 # ───────────────────────────────────────────────────────────────────────────────
 
 def group_images(image_paths: List[str],
-                 time_threshold: float = 0.5,
+                 time_threshold: float = 3.0,
                  use_adaptive: bool = True,
-                 phash_threshold: int = 10) -> List[List[Dict[str, Any]]]:
+                 phash_threshold: int = 20) -> List[List[Dict[str, Any]]]:
     """
     Nhóm ảnh theo 2 pass:
     
@@ -454,9 +454,9 @@ def select_best_images(groups: List[List[Dict[str, Any]]],
     for i in range(1, len(selected_items)):
         curr = selected_items[i]
         
-        # 2. Kiểm tra khoảng cách thời gian (chỉ lọc trùng nếu < 5s để gom gắt hơn)
+        # 2. Kiểm tra khoảng cách thời gian (chỉ lọc trùng nếu < 15s để gom gắt hơn như yêu cầu)
         time_gap = curr['time'] - last_kept['time']
-        if time_gap > 5.0:
+        if time_gap > 15.0:
             final_unique_paths.append(curr['path'])
             last_kept = curr
             continue

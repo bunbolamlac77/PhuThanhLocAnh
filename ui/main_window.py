@@ -234,24 +234,23 @@ SLIDER_CARD_STYLE = f"""
     }}
 """
 
-BTN_PRIMARY = f"""
+BTX_PRIMARY = f"""
     QPushButton {{
-        background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
-            stop:0 #2C3E8C, stop:1 #4F46E5);
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+            stop:0 {COLOR_ACCENT}, stop:1 #312E81);
         color:white; font-size:13px; font-weight:700;
-        border:none; border-radius:10px;
-        padding:0 28px; letter-spacing:0.3px;
+        border:none; border-radius:12px;
+        padding:0 32px; letter-spacing:0.4px;
     }}
     QPushButton:hover {{
-        background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
-            stop:0 #3D50A8, stop:1 #6058F5);
+        background: qlineargradient(x1:0, y1:0, x2:1, y2:1,
+            stop:0 #6366F1, stop:1 {COLOR_ACCENT});
     }}
     QPushButton:pressed {{
-        background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
-            stop:0 #1E2E6E, stop:1 #3E38D5);
+        background: #312E81;
     }}
     QPushButton:disabled {{
-        background:{COLOR_BORDER_DARK}; color:{COLOR_TEXT_MUTED};
+        background:{COLOR_BORDER}; color:{COLOR_TEXT_MUTED};
     }}
 """
 
@@ -428,12 +427,13 @@ class MainWindow(QMainWindow):
 
     def _make_header(self) -> QWidget:
         hdr = QWidget()
-        hdr.setFixedHeight(62)
-        hdr.setStyleSheet("""
-            QWidget {
-                background: qlineargradient(x1:0,y1:0,x2:1,y2:0,
-                    stop:0 #1A1A2E, stop:0.6 #16213E, stop:1 #0F3460);
-            }
+        hdr.setFixedHeight(68)
+        hdr.setStyleSheet(f"""
+            QWidget {{
+                background: qlineargradient(x1:0, y1:0, x2:1, y2:0,
+                    stop:0 #0F172A, stop:0.5 #1E293B, stop:1 #334155);
+                border-bottom: 1px solid rgba(255,255,255,0.1);
+            }}
         """)
         hl = QHBoxLayout(hdr)
         hl.setContentsMargins(24, 0, 24, 0)
@@ -475,8 +475,8 @@ class MainWindow(QMainWindow):
 
         # Slider: Time
         hl.addWidget(self._slider_group(
-            "Ngưỡng nhóm burst", "0.5s",
-            1, 20, 5, 130,
+            "Ngưỡng nhóm burst", "3.0s",
+            1, 50, 30, 130,
             self._on_time, "_time_lbl", "time_slider"
         ))
         hl.addWidget(self._vdivider())
@@ -490,26 +490,29 @@ class MainWindow(QMainWindow):
 
         hl.addStretch()
 
-        self.btn_start = QPushButton("  ▶  Bắt đầu lọc")
-        self.btn_start.setMinimumHeight(42)
-        self.btn_start.setMinimumWidth(170)
-        self.btn_start.setStyleSheet(BTN_PRIMARY)
+        self.btn_start = QPushButton("  ▶   Bắt đầu lọc ảnh")
+        self.btn_start.setMinimumHeight(44)
+        self.btn_start.setMinimumWidth(180)
+        self.btn_start.setStyleSheet(BTX_PRIMARY)
         self.btn_start.setEnabled(False)
         self.btn_start.clicked.connect(self.start_culling)
-        _shadow(self.btn_start, radius=12, color="#2C3E8C35", offset=(0, 4))
+        _shadow(self.btn_start, radius=16, color="#4F46E533", offset=(0, 4))
         hl.addWidget(self.btn_start)
 
         # Nút Tạm Dừng & Hủy (Ẩn lúc đầu)
+        pause_style = BTX_PRIMARY.replace("#312E81", "#B45309").replace(COLOR_ACCENT, "#F59E0B")
+        cancel_style = BTX_PRIMARY.replace("#312E81", "#991B1B").replace(COLOR_ACCENT, "#EF4444")
+
         self.btn_pause = QPushButton("⏸ Tạm Dừng")
-        self.btn_pause.setMinimumHeight(42)
-        self.btn_pause.setStyleSheet(BTN_PRIMARY.replace("#4F46E5", "#F59E0B").replace("#2C3E8C", "#D97706"))
+        self.btn_pause.setMinimumHeight(44)
+        self.btn_pause.setStyleSheet(pause_style)
         self.btn_pause.clicked.connect(self.toggle_pause)
         self.btn_pause.hide()
         hl.addWidget(self.btn_pause)
 
         self.btn_cancel = QPushButton("⏹ Hủy")
-        self.btn_cancel.setMinimumHeight(42)
-        self.btn_cancel.setStyleSheet(BTN_PRIMARY.replace("#4F46E5", "#EF4444").replace("#2C3E8C", "#B91C1C"))
+        self.btn_cancel.setMinimumHeight(44)
+        self.btn_cancel.setStyleSheet(cancel_style)
         self.btn_cancel.clicked.connect(self.cancel_culling)
         self.btn_cancel.hide()
         hl.addWidget(self.btn_cancel)

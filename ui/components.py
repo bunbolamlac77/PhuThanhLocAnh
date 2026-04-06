@@ -15,32 +15,32 @@ from PySide6.QtGui import QPixmap, QImage, QColor, QFont
 # ─────────────────────────────────────────────────────────────────────────────
 # DESIGN TOKENS
 # ─────────────────────────────────────────────────────────────────────────────
-COLOR_BG             = "#F5F6FA"
+COLOR_BG             = "#F8FAFC"
 COLOR_SURFACE        = "#FFFFFF"
-COLOR_BORDER         = "#E4E7EF"
-COLOR_BORDER_DARK    = "#C8CDD8"
-COLOR_TEXT_PRIMARY   = "#1B2039"
-COLOR_TEXT_SECONDARY = "#5A6478"
-COLOR_TEXT_MUTED     = "#9BA3B8"
-COLOR_ACCENT         = "#3D52D5"
-COLOR_ACCENT_LIGHT   = "#EBF0FF"
-COLOR_SUCCESS        = "#16A34A"
-COLOR_SUCCESS_BG     = "#F0FDF4"
-COLOR_SUCCESS_BORDER = "#BBF7D0"
-COLOR_WARNING        = "#CA8A04"
-COLOR_WARNING_BG     = "#FEFCE8"
-COLOR_WARNING_BORDER = "#FDE68A"
-COLOR_ERROR          = "#DC2626"
-COLOR_ERROR_BG       = "#FFF1F1"
-COLOR_ERROR_BORDER   = "#FCA5A5"
-COLOR_INFO_BG        = "#EBF0FF"
-COLOR_INFO_BORDER    = "#C7D2FE"
-COLOR_DROP_ACTIVE    = "#6366F1"
-COLOR_GAZE_OK        = "#059669"   # Màu nhìn thẳng
-COLOR_GAZE_AWAY      = "#EA580C"   # Màu nhìn đi chỗ khác
+COLOR_BORDER         = "#E2E8F0"
+COLOR_BORDER_DARK    = "#CBD5E1"
+COLOR_TEXT_PRIMARY   = "#0F172A"
+COLOR_TEXT_SECONDARY = "#475569"
+COLOR_TEXT_MUTED     = "#94A3B8"
+COLOR_ACCENT         = "#4F46E5"
+COLOR_ACCENT_LIGHT   = "#EEF2FF"
+COLOR_SUCCESS        = "#10B981"
+COLOR_SUCCESS_BG     = "#ECFDF5"
+COLOR_SUCCESS_BORDER = "#D1FAE5"
+COLOR_WARNING        = "#F59E0B"
+COLOR_WARNING_BG     = "#FFFBEB"
+COLOR_WARNING_BORDER = "#FEF3C7"
+COLOR_ERROR          = "#EF4444"
+COLOR_ERROR_BG       = "#FEF2F2"
+COLOR_ERROR_BORDER   = "#FEE2E2"
+COLOR_INFO_BG        = "#EFF6FF"
+COLOR_INFO_BORDER    = "#DBEAFE"
+COLOR_DROP_ACTIVE    = "#4F46E5"
+COLOR_GAZE_OK        = "#10B981"   # Màu nhìn thẳng
+COLOR_GAZE_AWAY      = "#F97316"   # Màu nhìn đi chỗ khác
 
 
-def _shadow(widget, radius=18, color="#00000014", offset=(0, 3)):
+def _shadow(widget, radius=24, color="#0000000F", offset=(0, 4)):
     sh = QGraphicsDropShadowEffect(widget)
     sh.setBlurRadius(radius)
     sh.setColor(QColor(color))
@@ -220,34 +220,53 @@ class ImagePreviewWidget(QFrame):
         hl.addStretch()
         vl.addWidget(hdr)
 
-        # Gaze status bar (MỚI)
-        self.gaze_bar = QWidget()
-        self.gaze_bar.setFixedHeight(28)
-        self.gaze_bar.setStyleSheet(f"background:{COLOR_BORDER}10; border-bottom:1px solid {COLOR_BORDER};")
-        gb_layout = QHBoxLayout(self.gaze_bar)
-        gb_layout.setContentsMargins(12, 0, 12, 0)
-        self.gaze_status = QLabel("👁  Gaze: —")
-        self.gaze_status.setStyleSheet(f"color:{COLOR_TEXT_MUTED}; font-size:11px; font-weight:600;")
-        self.ear_status = QLabel("EAR: —")
-        self.ear_status.setStyleSheet(f"color:{COLOR_TEXT_MUTED}; font-size:11px;")
-        self.face_count_lbl = QLabel("Faces: —")
-        self.face_count_lbl.setStyleSheet(f"color:{COLOR_TEXT_MUTED}; font-size:11px;")
-        gb_layout.addWidget(self.gaze_status)
-        gb_layout.addSpacing(16)
-        gb_layout.addWidget(self.ear_status)
-        gb_layout.addSpacing(16)
-        gb_layout.addWidget(self.face_count_lbl)
-        gb_layout.addStretch()
-        vl.addWidget(self.gaze_bar)
+        # Image area container
+        self.container = QWidget()
+        self.container_layout = QVBoxLayout(self.container)
+        self.container_layout.setContentsMargins(0, 0, 0, 0)
+        vl.addWidget(self.container, 1)
 
-        # Image area
-        self.image_label = QLabel()
+        self.image_label = QLabel(self.container)
         self.image_label.setAlignment(Qt.AlignCenter)
         self.image_label.setMinimumSize(360, 220)
         self.image_label.setSizePolicy(QSizePolicy.Expanding, QSizePolicy.Expanding)
         self._show_placeholder()
-        vl.addWidget(self.image_label)
+        self.container_layout.addWidget(self.image_label)
 
+        # Floating Gaze Overlay (MỚI - Glassmorphism)
+        self.info_overlay = QFrame(self.container)
+        self.info_overlay.setFixedWidth(320)
+        self.info_overlay.setFixedHeight(32)
+        self.info_overlay.setStyleSheet(f"""
+            QFrame {{
+                background: rgba(255, 255, 255, 0.7);
+                border: 1px solid rgba(255, 255, 255, 0.4);
+                border-radius: 16px;
+                backdrop-filter: blur(10px);
+            }}
+        """)
+        _shadow(self.info_overlay, radius=12, color="#00000020", offset=(0, 2))
+
+        ol = QHBoxLayout(self.info_overlay)
+        ol.setContentsMargins(12, 0, 12, 0)
+        ol.setSpacing(10)
+
+        self.gaze_status = QLabel("👁 —")
+        self.gaze_status.setStyleSheet(f"color:{COLOR_TEXT_PRIMARY}; font-size:11px; font-weight:700; background:transparent;")
+        self.ear_status = QLabel("EAR: —")
+        self.ear_status.setStyleSheet(f"color:{COLOR_TEXT_SECONDARY}; font-size:10px; background:transparent;")
+        self.face_count_lbl = QLabel("Faces: —")
+        self.face_count_lbl.setStyleSheet(f"color:{COLOR_TEXT_MUTED}; font-size:10px; background:transparent;")
+
+        ol.addStretch()
+        ol.addWidget(self.gaze_status)
+        ol.addSpacing(4)
+        ol.addWidget(self.ear_status)
+        ol.addSpacing(4)
+        ol.addWidget(self.face_count_lbl)
+        ol.addStretch()
+        
+        self.info_overlay.hide()
         self._current_pixmap = None
 
     def _show_placeholder(self):
@@ -271,26 +290,24 @@ class ImagePreviewWidget(QFrame):
         self._scale_to_fit()
 
     def update_gaze_info(self, looking: int, total: int, ear_vals: list):
-        """Cập nhật thanh thông tin gaze + EAR bên dưới header."""
+        """Cập nhật thanh thông tin gaze + EAR trong Floating Overlay."""
         if total == 0:
-            self.gaze_status.setText("👁  Gaze: Không có mặt")
-            self.gaze_status.setStyleSheet(f"color:{COLOR_TEXT_MUTED}; font-size:11px; font-weight:600;")
-            self.ear_status.setText("EAR: —")
-            self.face_count_lbl.setText("Faces: 0")
+            self.info_overlay.hide()
             return
 
-        self.face_count_lbl.setText(f"Faces: {total}")
+        self.info_overlay.show()
+        self.face_count_lbl.setText(f"· {total} mặt")
 
         if looking == total:
-            self.gaze_status.setText(f"👁  Nhìn thẳng: {looking}/{total}")
+            self.gaze_status.setText(f"👁 Nhìn thẳng ({looking}/{total})")
             self.gaze_status.setStyleSheet(
-                f"color:{COLOR_GAZE_OK}; font-size:11px; font-weight:700;"
+                f"color:{COLOR_GAZE_OK}; font-size:11px; font-weight:700; background:transparent;"
             )
         else:
             not_look = total - looking
-            self.gaze_status.setText(f"👁  Nhìn lệch: {not_look}/{total}")
+            self.gaze_status.setText(f"👁 Nhìn lệch ({not_look}/{total})")
             self.gaze_status.setStyleSheet(
-                f"color:{COLOR_GAZE_AWAY}; font-size:11px; font-weight:700;"
+                f"color:{COLOR_GAZE_AWAY}; font-size:11px; font-weight:700; background:transparent;"
             )
 
         if ear_vals:
@@ -308,6 +325,10 @@ class ImagePreviewWidget(QFrame):
     def resizeEvent(self, event):
         super().resizeEvent(event)
         self._scale_to_fit()
+        # Position the info overlay (floating top-center)
+        if hasattr(self, 'info_overlay'):
+            x = (self.container.width() - self.info_overlay.width()) // 2
+            self.info_overlay.move(x, 12)
 
 
 # ─────────────────────────────────────────────────────────────────────────────
